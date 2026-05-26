@@ -1,0 +1,10 @@
+services:
+  bench:
+    build: .
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    volumes:
+      - ./tasks:/app/tasks
+      - ./skills:/app/skills
+      - ./results:/app/results
+    command: ["run", "/app/tasks", "--skills", "/app/skills", "--output", "/app/results"]

@@ -1,0 +1,40 @@
+id: create_dockerfile
+name: "Create a Dockerfile for a Node.js app"
+description: "Generate a production-ready Dockerfile with multi-stage build"
+tags: [docker, devops, nodejs]
+timeout_seconds: 120
+model: claude-sonnet-4-6
+
+setup:
+  scaffold:
+    "package.json": |
+      {"name": "my-api", "version": "1.0.0", "main": "server.js", "scripts": {"start": "node server.js"}, "dependencies": {"express": "^4.18.0"}}
+    "server.js": |
+      const express = require('express');
+      const app = express();
+      app.get('/', (req, res) => res.json({ ok: true }));
+      app.listen(process.env.PORT || 3000);
+
+turns:
+  - role: user
+    content: "Create a production Dockerfile for this Node.js app. Use multi-stage build, run as non-root user, and use node:20-alpine as the base."
+
+assertions:
+  - type: file_exists
+    target: Dockerfile
+    weight: 2.0
+  - type: file_contains
+    target: Dockerfile
+    expected: "node:20-alpine"
+    weight: 1.0
+  - type: file_contains
+    target: Dockerfile
+    expected: "USER"
+    weight: 1.0
+  - type: file_contains
+    target: Dockerfile
+    expected: "COPY"
+    weight: 0.5
+  - type: llm_judge
+    target: "Is this a well-structured multi-stage Dockerfile? Does it follow Docker best practices (layer caching for deps, non-root user, minimal final image)?"
+    weight: 2.0

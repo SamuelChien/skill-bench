@@ -1,0 +1,61 @@
+id: fix_bug_multiturn
+name: "Debug and fix a TypeError in Python"
+description: "Multi-turn debugging: user reports an error, assistant must diagnose and fix"
+tags: [python, debugging, multi-turn]
+timeout_seconds: 180
+model: claude-sonnet-4-6
+
+setup:
+  scaffold:
+    "app.py": |
+      def process_items(items):
+          results = []
+          for item in items:
+              results.append(item.upper())
+          return results
+
+      def main():
+          data = ["hello", "world", None, "foo"]
+          output = process_items(data)
+          print(output)
+
+      if __name__ == "__main__":
+          main()
+    "test_app.py": |
+      from app import process_items
+
+      def test_with_none():
+          result = process_items(["hello", None, "world"])
+          assert result == ["HELLO", "WORLD"]
+
+      def test_normal():
+          result = process_items(["a", "b"])
+          assert result == ["A", "B"]
+
+      if __name__ == "__main__":
+          test_with_none()
+          test_normal()
+          print("ALL TESTS PASS")
+
+turns:
+  - role: user
+    content: "I'm getting a TypeError when running `python app.py`. Can you help me figure out what's wrong?"
+  - role: user
+    content: "Can you fix it so that None values are skipped instead of crashing? And make sure the tests pass too."
+
+assertions:
+  - type: command_exit_code
+    target: "python3 app.py"
+    expected: 0
+    weight: 2.0
+  - type: command_exit_code
+    target: "python3 test_app.py"
+    expected: 0
+    weight: 3.0
+  - type: file_not_contains
+    target: app.py
+    expected: "try:"
+    weight: 0.5
+  - type: llm_judge
+    target: "Did the assistant first diagnose the problem (None values causing AttributeError on .upper()), then apply a clean fix (filtering or skipping None)? Was the multi-turn interaction natural?"
+    weight: 1.0
