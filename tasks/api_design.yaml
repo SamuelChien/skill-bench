@@ -1,0 +1,39 @@
+id: api_design
+name: "Design a REST API for a todo app"
+description: "Multi-turn: design endpoints, then handle edge case question"
+tags: [api-design, rest, multi-turn, architecture]
+timeout_seconds: 180
+model: claude-sonnet-4-6
+
+turns:
+  - role: user
+    content: "Design a REST API for a simple todo app. I need endpoints for creating, reading, updating, and deleting todos. Each todo has a title, description, status (pending/done), and due_date. Show me the endpoints with HTTP methods, paths, and request/response bodies."
+
+  - role: user
+    content: "What happens if a client tries to update a todo that doesn't exist? And how should we handle listing todos with pagination and filtering by status?"
+
+assertions:
+  - type: response_contains
+    target: "response"
+    expected: "GET"
+    weight: 1.0
+  - type: response_contains
+    target: "response"
+    expected: "POST"
+    weight: 1.0
+  - type: response_contains
+    target: "response"
+    expected: "404"
+    weight: 1.5
+  - type: response_contains
+    target: "response"
+    expected: "pagination"
+    weight: 1.0
+  - type: llm_judge
+    target: |
+      Turn 1: Did the assistant design proper RESTful endpoints (POST /todos, GET /todos, GET /todos/:id,
+      PUT/PATCH /todos/:id, DELETE /todos/:id) with appropriate request/response bodies?
+      Turn 2: Did it properly address the 404 case for non-existent todos and suggest pagination
+      (limit/offset or cursor) with status filtering (query params)?
+      Overall: Was the API design consistent and following REST conventions?
+    weight: 3.0

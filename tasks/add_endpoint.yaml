@@ -1,15 +1,16 @@
 id: add_endpoint
 name: "Add REST endpoint to Express app"
-description: "Given an Express.js app, add a new GET /health endpoint that returns JSON status"
-tags: [backend, nodejs, express]
+description: "Given an Express.js app description, produce code for a new GET /health endpoint"
+tags: [backend, nodejs, express, code-generation]
 timeout_seconds: 120
 model: claude-sonnet-4-6
 
-setup:
-  scaffold:
-    "package.json": |
-      {"name": "test-app", "version": "1.0.0", "dependencies": {"express": "^4.18.0"}, "scripts": {"test": "node test.js"}}
-    "index.js": |
+turns:
+  - role: user
+    content: |
+      I have an Express.js app with this index.js:
+
+      ```javascript
       const express = require('express');
       const app = express();
 
@@ -18,45 +19,24 @@ setup:
       });
 
       module.exports = app;
-    "test.js": |
-      const app = require('./index');
-      const http = require('http');
-      const server = app.listen(0, () => {
-        const port = server.address().port;
-        http.get(`http://localhost:${port}/health`, (res) => {
-          let data = '';
-          res.on('data', chunk => data += chunk);
-          res.on('end', () => {
-            const body = JSON.parse(data);
-            if (body.status === 'ok' && res.statusCode === 200) {
-              console.log('PASS');
-              process.exit(0);
-            } else {
-              console.log('FAIL: unexpected response');
-              process.exit(1);
-            }
-          });
-        }).on('error', () => {
-          console.log('FAIL: request error');
-          process.exit(1);
-        });
-      });
-  commands:
-    - "npm install --silent 2>/dev/null || true"
+      ```
 
-turns:
-  - role: user
-    content: "Add a GET /health endpoint that returns { status: 'ok' } with a 200 status code"
+      Add a GET /health endpoint that returns { status: 'ok' } with a 200 status code.
+      Show me the updated index.js.
 
 assertions:
-  - type: file_contains
-    target: index.js
+  - type: response_contains
+    target: "response"
     expected: "/health"
+    weight: 2.0
+  - type: code_block_contains
+    target: "code"
+    expected: "status"
+    weight: 1.5
+  - type: code_block_contains
+    target: "code"
+    expected: "app.get"
     weight: 1.0
-  - type: command_exit_code
-    target: "node test.js"
-    expected: 0
-    weight: 3.0
   - type: llm_judge
-    target: "Did the assistant correctly add a health endpoint without breaking existing functionality? Was the code clean and minimal?"
-    weight: 1.0
+    target: "Did the assistant correctly add a /health endpoint returning {status: 'ok'}? Was the code clean and minimal without breaking the existing / route?"
+    weight: 2.0

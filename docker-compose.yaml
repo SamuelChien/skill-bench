@@ -1,10 +1,12 @@
 services:
   bench:
     build: .
+    ports:
+      - "8000:8000"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SKILL_BENCH_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SKILL_BENCH_DATABASE_PATH=/app/data/skill_bench.db
     volumes:
       - ./tasks:/app/tasks
       - ./skills:/app/skills
-      - ./results:/app/results
-    command: ["run", "/app/tasks", "--skills", "/app/skills", "--output", "/app/results"]
+      - ./data:/app/data

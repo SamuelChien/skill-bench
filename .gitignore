@@ -5,3 +5,5 @@ results/
 node_modules/
 bridge/node_modules/
 .env
+*.db
+data/

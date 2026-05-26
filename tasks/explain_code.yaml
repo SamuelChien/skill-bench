@@ -1,0 +1,44 @@
+id: explain_code
+name: "Explain complex code clearly"
+description: "Given a non-trivial algorithm, produce a clear, accurate explanation"
+tags: [explanation, algorithms, comprehension]
+timeout_seconds: 120
+model: claude-sonnet-4-6
+
+turns:
+  - role: user
+    content: |
+      Explain what this function does, step by step:
+
+      ```python
+      def solve(board):
+          if not any(0 in row for row in board):
+              return True
+          for i in range(9):
+              for j in range(9):
+                  if board[i][j] == 0:
+                      for num in range(1, 10):
+                          if valid(board, i, j, num):
+                              board[i][j] = num
+                              if solve(board):
+                                  return True
+                              board[i][j] = 0
+                      return False
+      ```
+
+assertions:
+  - type: response_contains
+    target: "response"
+    expected: "backtracking"
+    weight: 2.0
+  - type: response_contains
+    target: "response"
+    expected: "sudoku"
+    weight: 2.0
+  - type: response_contains
+    target: "response"
+    expected: "recursive"
+    weight: 1.0
+  - type: llm_judge
+    target: "Did the assistant correctly identify this as a Sudoku solver using backtracking? Was the explanation clear, accurate, and well-structured? Did it explain the base case, the recursive case, and the backtracking (setting back to 0)?"
+    weight: 3.0

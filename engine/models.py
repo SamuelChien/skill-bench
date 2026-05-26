@@ -18,6 +18,10 @@ class AssertionType(Enum):
     COMMAND_OUTPUT_CONTAINS = "command_output_contains"
     DIRECTORY_EXISTS = "directory_exists"
     LLM_JUDGE = "llm_judge"
+    RESPONSE_CONTAINS = "response_contains"
+    RESPONSE_NOT_CONTAINS = "response_not_contains"
+    RESPONSE_MATCHES_REGEX = "response_matches_regex"
+    CODE_BLOCK_CONTAINS = "code_block_contains"
 
 
 @dataclass

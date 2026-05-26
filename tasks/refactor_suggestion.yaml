@@ -1,0 +1,49 @@
+id: refactor_suggestion
+name: "Suggest refactoring for code smells"
+description: "Identify issues in messy code and suggest clean improvements"
+tags: [refactoring, code-quality, python]
+timeout_seconds: 120
+model: claude-sonnet-4-6
+
+turns:
+  - role: user
+    content: |
+      Review this code and suggest improvements:
+
+      ```python
+      def calc(d, t):
+          if t == "a":
+              r = 0
+              for i in d:
+                  r = r + i
+              return r
+          elif t == "m":
+              r = 0
+              for i in d:
+                  r = r + i
+              return r / len(d)
+          elif t == "x":
+              r = d[0]
+              for i in d:
+                  if i > r:
+                      r = i
+              return r
+          elif t == "n":
+              r = d[0]
+              for i in d:
+                  if i < r:
+                      r = i
+              return r
+      ```
+
+assertions:
+  - type: response_contains
+    target: "response"
+    expected: "name"
+    weight: 1.0
+  - type: llm_judge
+    target: |
+      Did the assistant identify the key issues: (1) poor variable/function names, (2) magic string type codes,
+      (3) duplicated sum logic, (4) no error handling for empty lists? Did it suggest using built-in sum/max/min,
+      meaningful names, and potentially an enum or dict dispatch? Was the refactored code shown?
+    weight: 4.0

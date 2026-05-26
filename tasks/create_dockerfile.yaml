@@ -1,40 +1,40 @@
 id: create_dockerfile
 name: "Create a Dockerfile for a Node.js app"
-description: "Generate a production-ready Dockerfile with multi-stage build"
-tags: [docker, devops, nodejs]
+description: "Generate a production-ready Dockerfile with multi-stage build, non-root user, alpine base"
+tags: [docker, devops, nodejs, code-generation]
 timeout_seconds: 120
 model: claude-sonnet-4-6
 
-setup:
-  scaffold:
-    "package.json": |
-      {"name": "my-api", "version": "1.0.0", "main": "server.js", "scripts": {"start": "node server.js"}, "dependencies": {"express": "^4.18.0"}}
-    "server.js": |
-      const express = require('express');
-      const app = express();
-      app.get('/', (req, res) => res.json({ ok: true }));
-      app.listen(process.env.PORT || 3000);
-
 turns:
   - role: user
-    content: "Create a production Dockerfile for this Node.js app. Use multi-stage build, run as non-root user, and use node:20-alpine as the base."
+    content: |
+      I have a Node.js app with:
+      - package.json: {"name": "my-api", "version": "1.0.0", "main": "server.js", "scripts": {"start": "node server.js"}, "dependencies": {"express": "^4.18.0"}}
+      - server.js: a basic Express server on process.env.PORT || 3000
+
+      Create a production Dockerfile. Requirements:
+      - Use multi-stage build
+      - Use node:20-alpine as base
+      - Run as non-root user
+      - Optimize for layer caching (install deps before copying code)
 
 assertions:
-  - type: file_exists
-    target: Dockerfile
+  - type: response_contains
+    target: "response"
+    expected: "FROM"
     weight: 2.0
-  - type: file_contains
-    target: Dockerfile
+  - type: code_block_contains
+    target: "code"
     expected: "node:20-alpine"
-    weight: 1.0
-  - type: file_contains
-    target: Dockerfile
+    weight: 1.5
+  - type: code_block_contains
+    target: "code"
     expected: "USER"
-    weight: 1.0
-  - type: file_contains
-    target: Dockerfile
+    weight: 1.5
+  - type: code_block_contains
+    target: "code"
     expected: "COPY"
     weight: 0.5
   - type: llm_judge
-    target: "Is this a well-structured multi-stage Dockerfile? Does it follow Docker best practices (layer caching for deps, non-root user, minimal final image)?"
+    target: "Is this a well-structured multi-stage Dockerfile? Does it follow best practices: layer caching (COPY package*.json before source), non-root user, minimal final image, proper EXPOSE and CMD?"
     weight: 2.0
