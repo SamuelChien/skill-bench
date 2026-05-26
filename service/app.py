@@ -3,11 +3,14 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 import anthropic
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from service import db
 from service.config import settings
@@ -58,6 +61,14 @@ app.include_router(tasks.router)
 app.include_router(skills.router)
 app.include_router(jobs.router)
 app.include_router(results.router)
+
+_static_dir = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+
+@app.get("/", include_in_schema=False)
+async def index():
+    return FileResponse(str(_static_dir / "index.html"))
 
 
 @app.get("/health")
