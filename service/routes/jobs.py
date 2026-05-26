@@ -111,6 +111,32 @@ async def cancel_job(job_id: str):
     await db.update("jobs", {"status": "cancelled"}, "id = ?", (job_id,))
 
 
+@router.post("/{job_id}/clone", response_model=JobResponse, status_code=201)
+async def clone_job(job_id: str):
+    row = await db.fetch_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    if not row:
+        raise HTTPException(404, f"Job '{job_id}' not found")
+
+    new_id = uuid.uuid4().hex[:16]
+    await db.insert("jobs", {
+        "id": new_id,
+        "type": row["type"],
+        "status": "pending",
+        "skill_id": row["skill_id"],
+        "model": row["model"],
+        "config_json": row["config_json"],
+        "task_ids_json": row["task_ids_json"],
+        "progress_json": "{}",
+        "summary_json": "{}",
+    })
+
+    from service.worker import enqueue_job
+    await enqueue_job(new_id)
+
+    new_row = await db.fetch_one("SELECT * FROM jobs WHERE id = ?", (new_id,))
+    return _row_to_response(new_row)
+
+
 @router.get("/{job_id}/events")
 async def stream_events(job_id: str):
     row = await db.fetch_one("SELECT id FROM jobs WHERE id = ?", (job_id,))

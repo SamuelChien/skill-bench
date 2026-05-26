@@ -68,7 +68,7 @@ def _check_assertion(
 
     match atype:
         case "response_contains":
-            found = expected in full_response
+            found = expected.lower() in full_response.lower()
             return {
                 "type": atype, "target": target, "expected": expected, "weight": weight,
                 "passed": found, "actual": None,
@@ -76,7 +76,7 @@ def _check_assertion(
             }
 
         case "response_not_contains":
-            found = expected in full_response
+            found = expected.lower() in full_response.lower()
             return {
                 "type": atype, "target": target, "expected": expected, "weight": weight,
                 "passed": not found, "actual": None,
@@ -140,7 +140,16 @@ Respond in JSON format:
 
 Score 1.0 = perfectly accomplished, 0.0 = completely failed."""
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key or None)
+    api_key = settings.get_api_key()
+    if api_key:
+        return await _run_judge_api(assertion, prompt, judge_model, api_key)
+    return await _run_judge_cli(assertion, prompt, judge_model)
+
+
+async def _run_judge_api(
+    assertion: dict[str, Any], prompt: str, judge_model: str, api_key: str
+) -> dict[str, Any]:
+    client = anthropic.AsyncAnthropic(api_key=api_key)
     try:
         response = await asyncio.wait_for(
             client.messages.create(
@@ -153,24 +162,53 @@ Score 1.0 = perfectly accomplished, 0.0 = completely failed."""
         if not response.content:
             return {"prompt": assertion.get("target", ""), "score": 0.5, "reasoning": "Empty response"}
         text = response.content[0].text
-        data = json.loads(text)
+        return _parse_judge_response(assertion, text)
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        return {"prompt": assertion.get("target", ""), "score": 0.5, "reasoning": f"Parse error: {e}"}
+    except Exception as e:
+        logger.exception("Judge API call failed")
+        return {"prompt": assertion.get("target", ""), "score": 0.0, "reasoning": f"API error: {e}"}
+
+
+async def _run_judge_cli(
+    assertion: dict[str, Any], prompt: str, judge_model: str
+) -> dict[str, Any]:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", prompt,
+            "--model", judge_model, "--output-format", "text", "--max-turns", "1",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+        text = stdout.decode().strip()
+        return _parse_judge_response(assertion, text)
+    except Exception as e:
+        logger.exception("Judge CLI call failed")
+        return {
+            "prompt": assertion.get("target", ""),
+            "score": 0.0,
+            "reasoning": f"API error: {e}",
+        }
+
+
+def _parse_judge_response(assertion: dict[str, Any], text: str) -> dict[str, Any]:
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            data = json.loads(text[start:end])
+        else:
+            data = json.loads(text)
         return {
             "prompt": assertion.get("target", ""),
             "score": float(data.get("score", 0.5)),
             "reasoning": data.get("reasoning", ""),
         }
-    except (json.JSONDecodeError, KeyError, IndexError) as e:
+    except (json.JSONDecodeError, ValueError):
         return {
             "prompt": assertion.get("target", ""),
             "score": 0.5,
-            "reasoning": f"Parse error: {e}",
-        }
-    except Exception as e:
-        logger.exception("Judge call failed")
-        return {
-            "prompt": assertion.get("target", ""),
-            "score": 0.0,
-            "reasoning": f"API error: {e}",
+            "reasoning": f"Could not parse judge response: {text[:200]}",
         }
 
 

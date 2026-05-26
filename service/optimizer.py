@@ -13,8 +13,16 @@ import anthropic
 from service import db
 from service.config import settings
 from service.events import emit_event
-from service.sandbox import run_conversation
 from service.scorer import score_conversation
+
+
+def _get_sandbox():
+    from service.config import settings
+    if settings.get_api_key():
+        from service.sandbox import run_conversation
+        return run_conversation
+    from service.sandbox_cli import run_conversation_cli
+    return run_conversation_cli
 
 logger = logging.getLogger("skill-bench.optimizer")
 
@@ -142,6 +150,7 @@ async def _evaluate_all(
     enable_thinking: bool,
     thinking_budget: int,
 ) -> dict[str, float]:
+    run_conversation = _get_sandbox()
     scores = {}
     for task in tasks:
         task_id = task["id"]
@@ -175,6 +184,7 @@ async def _evaluate_all_with_details(
     enable_thinking: bool,
     thinking_budget: int,
 ) -> tuple[dict[str, float], dict[str, dict[str, Any]]]:
+    run_conversation = _get_sandbox()
     scores = {}
     details = {}
     for task in tasks:
@@ -232,7 +242,7 @@ async def _suggest_improvements(
     k: int = 1,
     extra_context: str = "",
 ) -> list[dict[str, Any]]:
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key or None)
+    client = anthropic.AsyncAnthropic(api_key=settings.get_api_key() or None)
 
     task_descriptions = []
     for task in weak_tasks:

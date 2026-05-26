@@ -109,8 +109,18 @@ async def _worker(worker_id: int) -> None:
             logger.exception("Worker %d unexpected error", worker_id)
 
 
+def _get_sandbox():
+    from service.config import settings
+    if settings.get_api_key():
+        from service.sandbox import run_conversation
+        return run_conversation
+    from service.sandbox_cli import run_conversation_cli
+    logger.info("No API key — using Claude CLI sandbox backend")
+    return run_conversation_cli
+
+
 async def _run_benchmark(job: dict) -> None:
-    from service.sandbox import run_conversation
+    run_conversation = _get_sandbox()
     from service.scorer import score_conversation
 
     config = json.loads(job["config_json"])

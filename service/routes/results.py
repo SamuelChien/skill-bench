@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, HTTPException, Query
+from starlette.responses import StreamingResponse
 
 from service import db
 from service.models.results import (
@@ -146,4 +147,47 @@ async def get_iteration(job_id: str, n: int):
         accepted=bool(row["accepted"]),
         skill_content=row["skill_content"],
         created_at=row["created_at"],
+    )
+
+
+@router.get("/api/v1/jobs/{job_id}/export")
+async def export_jsonl(job_id: str):
+    job = await db.fetch_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
+    if not job:
+        raise HTTPException(404, f"Job '{job_id}' not found")
+
+    async def generate():
+        results = await db.fetch_all(
+            "SELECT * FROM results WHERE job_id = ? ORDER BY task_id", (job_id,)
+        )
+        for r in results:
+            turn_rows = await db.fetch_all(
+                "SELECT * FROM turns WHERE result_id = ? ORDER BY turn_index", (r["id"],)
+            )
+            entry = {
+                "task_id": r["task_id"],
+                "run_id": r["run_id"],
+                "score": r["overall_score"],
+                "assertion_results": json.loads(r["assertion_results_json"]),
+                "judge_results": json.loads(r["judge_results_json"]),
+                "turns": [
+                    {
+                        "turn_index": t["turn_index"],
+                        "user_input": t["user_input"],
+                        "assistant_response": t["assistant_response"],
+                        "thinking_trace": t["thinking_trace"],
+                        "tool_calls": json.loads(t["tool_calls_json"]),
+                        "input_tokens": t["input_tokens"],
+                        "output_tokens": t["output_tokens"],
+                        "duration_ms": t["duration_ms"],
+                    }
+                    for t in turn_rows
+                ],
+            }
+            yield json.dumps(entry, default=str) + "\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f"attachment; filename=job_{job_id}.jsonl"},
     )

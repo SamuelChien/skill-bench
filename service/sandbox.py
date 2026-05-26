@@ -72,7 +72,7 @@ async def run_conversation(
 ) -> dict[str, Any]:
     model = model or settings.default_model
     handler = tool_handler or _default_tool_handler
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key or None)
+    client = anthropic.AsyncAnthropic(api_key=settings.get_api_key() or None)
 
     messages: list[dict[str, Any]] = []
     turn_records: list[dict[str, Any]] = []
