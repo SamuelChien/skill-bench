@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS skills (
     version INTEGER NOT NULL DEFAULT 1,
     parent_id TEXT REFERENCES skills(id),
     metadata_json TEXT NOT NULL DEFAULT '{}',
+    file_path TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);

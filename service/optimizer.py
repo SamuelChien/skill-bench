@@ -8,8 +8,6 @@ import logging
 import uuid
 from typing import Any
 
-import anthropic
-
 from service import db
 from service.config import settings
 from service.events import emit_event
@@ -242,8 +240,6 @@ async def _suggest_improvements(
     k: int = 1,
     extra_context: str = "",
 ) -> list[dict[str, Any]]:
-    client = anthropic.AsyncAnthropic(api_key=settings.get_api_key() or None)
-
     task_descriptions = []
     for task in weak_tasks:
         task_descriptions.append(
@@ -268,25 +264,32 @@ Suggest {k} different improved version{"s" if k > 1 else ""} of the system promp
 Respond in JSON {"array" if k > 1 else ""} format:
 {{"suggestions": [{{"new_content": "the full new system prompt", "summary": "what changed and why"}}]}}"""
 
-    response = await asyncio.wait_for(
-        client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=8000,
-            messages=[{"role": "user", "content": prompt}],
-        ),
-        timeout=120.0,
+    import os
+    clean_env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDECODE")}
+    clean_env["FORCE_COLOR"] = "0"
+
+    proc = await asyncio.create_subprocess_exec(
+        "claude", "-p", prompt,
+        "--model", "claude-sonnet-4-6",
+        "--output-format", "text",
+        "--max-turns", "1",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        env=clean_env,
     )
+    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+    text = stdout.decode().strip() if stdout else ""
 
     try:
-        if not response.content:
+        if not text:
             return []
-        text = response.content[0].text
         start = text.find("{")
         end = text.rfind("}") + 1
+        if start < 0 or end <= start:
+            return []
         data = json.loads(text[start:end])
         return data.get("suggestions", [])[:k]
     except (json.JSONDecodeError, ValueError, KeyError):
-        logger.error("Failed to parse improvement suggestion")
+        logger.error("Failed to parse improvement suggestion: %s", text[:200])
         return []
 
 
