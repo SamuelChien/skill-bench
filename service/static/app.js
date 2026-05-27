@@ -1,5 +1,5 @@
 const API = '/api/v1';
-let _tasks = [], _skills = [], _jobs = [];
+let _tasks = [], _skills = [], _jobs = [], _episodes = [];
 
 async function api(path, opts = {}) {
   const res = await fetch(`${API}${path}`, { headers: {'Content-Type':'application/json'}, ...opts });
@@ -26,24 +26,28 @@ function $(sel) { return document.querySelector(sel); }
 // ─── Navigation ───
 function nav(view, ...args) {
   document.querySelectorAll('.sidebar-item').forEach(b => b.classList.remove('active'));
-  const btn = [...document.querySelectorAll('.sidebar-item')].find(b => b.textContent.includes(
-    {jobs:'Jobs',tests:'Test Cases',actors:'Actors',hillclimb:'Hill Climb','new-job':'New Job'}[view] || ''));
+  const btn = document.querySelector(`.sidebar-item[data-view="${view}"]`);
   if (btn) btn.classList.add('active');
 
   const main = el('main');
-  const views = {jobs: viewJobs, tests: viewTests, actors: viewActors, 'new-job': viewNewJob,
-    'job-detail': viewJobDetail, 'result-detail': viewResultDetail, hillclimb: viewHillClimb,
-    'hc-detail': viewHCDetail};
+  const views = {jobs: viewJobs, tests: viewTests, actors: viewActors, sessions: viewSessions,
+    'new-job': viewNewJob, 'job-detail': viewJobDetail, 'result-detail': viewResultDetail,
+    'episode-detail': viewEpisodeDetail, hillclimb: viewHillClimb, 'hc-detail': viewHCDetail};
   const fn = views[view];
   if (fn) fn(main, ...args);
 }
 
 // ─── Data loading ───
 async function reload() {
-  [_tasks, _skills, _jobs] = await Promise.all([api('/tasks'), api('/skills'), api('/jobs')]);
+  [_tasks, _skills, _jobs, _episodes] = await Promise.all([
+    api('/tasks'), api('/skills'), api('/jobs'),
+    api('/mining/episodes?limit=200').catch(() => []),
+  ]);
   el('cnt-jobs').textContent = _jobs.length;
   el('cnt-tests').textContent = _tasks.length;
   el('cnt-actors').textContent = _skills.length;
+  const epEl = el('cnt-episodes');
+  if (epEl) epEl.textContent = _episodes.length;
 }
 
 // ─── JOBS VIEW ───
@@ -455,6 +459,110 @@ async function viewHCDetail(m, jobId) {
     html += `</div>`;
   }
   html += `</div></div>`;
+  m.innerHTML = html;
+}
+
+// ─── SESSIONS VIEW ───
+async function viewSessions(m) {
+  m.innerHTML = `
+    <div class="page-hdr">
+      <div><h2>Sessions</h2><div class="sub">Mine real Claude sessions for test cases</div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="doScan()">Scan</button>
+        <button class="btn btn-primary" onclick="doMine()">Mine Episodes</button>
+      </div>
+    </div>
+    <div id="scan-result"></div>
+    <div id="mine-log" class="live-log mt-16" style="display:none"></div>
+    <div class="card mt-16"><div class="card-hdr">Mined Episodes <span class="meta">${_episodes.length}</span></div><div class="card-body flush">
+      <table><thead><tr><th>Intent</th><th>Tags</th><th>Turns</th><th>Status</th><th>Time</th></tr></thead>
+      <tbody>${_episodes.length ? _episodes.map(ep => {
+        const tags = (ep.tags||[]).map(t => `<span class="tag">${t}</span>`).join(' ');
+        const turns = (ep.turns||[]).filter(t => t.role === 'user' || t.role === 'assistant').length;
+        const status = ep.promoted_task_id
+          ? `<span class="badge badge-completed">promoted</span>`
+          : `<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();doPromote('${ep.id}')">Promote</button>`;
+        return `<tr class="clickable" onclick="nav('episode-detail','${ep.id}')">
+          <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ep.user_intent)}</td>
+          <td>${tags}</td><td>${turns}</td><td>${status}</td>
+          <td class="meta">${fmtTime(ep.timestamp || ep.created_at)}</td></tr>`;
+      }).join('') : '<tr><td colspan="5" class="empty">No episodes — click Mine to extract from sessions</td></tr>'}</tbody></table>
+    </div></div>`;
+}
+
+async function doScan() {
+  const result = await api('/mining/scan', {method:'POST'});
+  el('scan-result').innerHTML = `<div class="card"><div class="card-body">
+    <div class="meta">Project: ${result.project}</div>
+    <div class="mt-8"><strong>${result.total}</strong> sessions found</div>
+  </div></div>`;
+}
+
+async function doMine() {
+  el('mine-log').style.display = 'block';
+  el('mine-log').innerHTML = '<div class="log-line">Mining sessions...</div>';
+  try {
+    const result = await api('/mining/mine', {method:'POST', body: JSON.stringify({max_sessions: 50})});
+    el('mine-log').innerHTML += `<div class="log-line"><span class="sc">Done: ${result.mined} episodes found, ${result.stored} new stored</span></div>`;
+    await reload();
+    nav('sessions');
+  } catch(e) {
+    el('mine-log').innerHTML += `<div class="log-line"><span class="err">Error: ${e.message}</span></div>`;
+  }
+}
+
+async function doPromote(episodeId) {
+  try {
+    const result = await api(`/mining/episodes/${episodeId}/promote`, {method:'POST', body: JSON.stringify({auto_judge: true})});
+    await reload();
+    nav('sessions');
+  } catch(e) { alert(e.message); }
+}
+
+async function viewEpisodeDetail(m, episodeId) {
+  const ep = await api(`/mining/episodes/${episodeId}`);
+
+  let html = `
+    <div class="breadcrumb"><a onclick="nav('sessions')">Sessions</a> / <span>${episodeId.slice(0,10)}</span></div>
+    <div class="grid-2 mb-12">
+      <div class="card"><div class="card-body">
+        <div class="meta mb-12">USER INTENT</div>
+        <div style="font-size:15px;font-weight:500">${esc(ep.user_intent)}</div>
+        <div class="mt-8">${(ep.tags||[]).map(t => `<span class="tag">${t}</span>`).join(' ')}</div>
+      </div></div>
+      <div class="card"><div class="card-body gap-12" style="display:flex;flex-direction:column;gap:8px">
+        <div class="flex-between"><span class="meta">SESSION</span><code class="mono" style="font-size:11px">${ep.session_id.slice(0,12)}</code></div>
+        <div class="flex-between"><span class="meta">TOKENS</span><span class="mono" style="font-size:12px">${ep.tokens?.input||0}in / ${ep.tokens?.output||0}out</span></div>
+        <div class="flex-between"><span class="meta">TOOLS</span><span>${ep.tool_calls?.length||0} calls</span></div>
+        <div class="flex-between"><span class="meta">STATUS</span>${ep.promoted_task_id
+          ? `<span class="badge badge-completed">promoted → ${ep.promoted_task_id}</span>`
+          : `<button class="btn btn-primary btn-sm" onclick="doPromote('${ep.id}');nav('sessions')">Promote to Test Case</button>`}</div>
+      </div></div>
+    </div>`;
+
+  html += `<div class="card"><div class="card-hdr">Original Conversation <span class="meta">${ep.turns.length} events</span></div><div class="card-body">`;
+  for (const t of ep.turns) {
+    if (t.role === 'user') {
+      html += `<div class="turn-card mt-8"><div class="turn-body"><div class="msg">
+        <div class="msg-role user">User</div><div class="msg-text">${esc(t.content)}</div></div></div></div>`;
+    } else if (t.role === 'assistant') {
+      html += `<div class="turn-card mt-8"><div class="turn-body"><div class="msg">
+        <div class="msg-role assistant">Assistant</div><div class="msg-text">${esc(t.content)}</div></div></div></div>`;
+    } else if (t.role === 'thinking') {
+      html += `<details class="thinking-toggle mt-8"><summary>Thinking (${(t.content||'').length} chars)</summary>
+        <div class="thinking-text">${esc(t.content)}</div></details>`;
+    } else if (t.role === 'tool_use') {
+      html += `<div class="turn-card mt-8" style="border-left:2px solid var(--accent)"><div class="turn-body">
+        <div class="meta"><code>${t.tool_name}</code></div>
+        <div class="msg-text" style="max-height:100px">${esc(JSON.stringify(t.input, null, 2))}</div></div></div>`;
+    } else if (t.role === 'tool_result') {
+      html += `<div class="turn-card mt-8" style="border-left:2px solid var(--text3)"><div class="turn-body">
+        <div class="meta">Tool Result ${t.is_error ? '<span style="color:var(--red)">ERROR</span>' : ''}</div>
+        <div class="msg-text" style="max-height:100px">${esc(t.content)}</div></div></div>`;
+    }
+  }
+  html += `</div></div>`;
+
   m.innerHTML = html;
 }
 

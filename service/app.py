@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 
 from service import db
 from service.config import settings
-from service.routes import jobs, results, skills, tasks
+from service.routes import jobs, mining, results, skills, tasks
 from service.worker import start_workers, stop_workers
 
 logging.basicConfig(
@@ -61,6 +61,7 @@ app.include_router(tasks.router)
 app.include_router(skills.router)
 app.include_router(jobs.router)
 app.include_router(results.router)
+app.include_router(mining.router)
 
 _static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")

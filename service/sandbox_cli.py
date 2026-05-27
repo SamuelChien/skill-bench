@@ -1,11 +1,14 @@
-"""CLI sandbox backend: uses `claude -p` when no API key is available."""
+"""CLI sandbox: runs claude -p with --add-dir for skill testing, parses stream-json output."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import os
+import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 from service.config import settings
@@ -17,6 +20,8 @@ async def run_conversation_cli(
     system_prompt: str,
     turns: list[dict[str, str]],
     model: str | None = None,
+    skills_dir: str | None = None,
+    skill_content: str | None = None,
     **kwargs,
 ) -> dict[str, Any]:
     model = model or settings.default_model
@@ -25,70 +30,67 @@ async def run_conversation_cli(
     total_output = 0
     total_start = time.monotonic()
     error = None
-
     conversation_history: list[str] = []
 
-    for turn_idx, turn in enumerate(turns):
-        turn_start = time.monotonic()
-        user_content = turn["content"]
+    tmp_skill_dir = None
+    effective_skills_dir = skills_dir
 
-        prompt_parts = []
-        if system_prompt:
-            prompt_parts.append(f"[System prompt]: {system_prompt}\n")
-        for i, prev in enumerate(conversation_history):
-            prompt_parts.append(f"[Previous turn {i + 1}]: {prev}\n")
-        prompt_parts.append(f"[Current request]: {user_content}")
-        full_prompt = "\n".join(prompt_parts)
+    if not skills_dir and (skill_content or system_prompt):
+        content = skill_content or system_prompt
+        if content and content.strip():
+            tmp_skill_dir = tempfile.mkdtemp(prefix="skillbench-")
+            skill_path = Path(tmp_skill_dir) / "bench_skill.md"
+            frontmatter = "---\nname: bench-skill\ndescription: Benchmark skill under test\n---\n\n"
+            skill_path.write_text(frontmatter + content)
+            effective_skills_dir = tmp_skill_dir
 
-        assistant_text = ""
-        try:
-            cmd = [
-                "claude", "-p", full_prompt,
-                "--model", model,
-                "--output-format", "text",
-            ]
+    try:
+        for turn_idx, turn in enumerate(turns):
+            turn_start = time.monotonic()
+            user_content = turn["content"]
 
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=120.0
+            result = await _execute_turn(
+                user_message=user_content,
+                conversation_history=conversation_history,
+                model=model,
+                skills_dir=effective_skills_dir,
             )
 
-            if proc.returncode == 0 and stdout:
-                assistant_text = stdout.decode().strip()
-            elif stdout:
-                assistant_text = stdout.decode().strip()
-            else:
-                error = stderr.decode().strip() if stderr else f"Exit code {proc.returncode}"
+            assistant_text = result.get("response", "")
+            thinking_text = result.get("thinking", "")
+            tool_calls = result.get("tool_calls", [])
+            usage = result.get("usage", {})
+
+            if result.get("error") and not assistant_text:
+                error = result["error"]
                 assistant_text = f"[ERROR: {error}]"
 
-        except asyncio.TimeoutError:
-            error = "Claude CLI timed out after 120s"
-            assistant_text = f"[ERROR: {error}]"
-        except Exception as e:
-            logger.exception("CLI error on turn %d", turn_idx)
-            error = str(e)
-            assistant_text = f"[ERROR: {e}]"
+            turn_input = usage.get("input_tokens", 0)
+            turn_output = usage.get("output_tokens", 0)
+            total_input += turn_input
+            total_output += turn_output
 
-        conversation_history.append(f"User: {user_content}\nAssistant: {assistant_text[:500]}")
+            conversation_history.append(f"User: {user_content}\nAssistant: {assistant_text[:500]}")
 
-        turn_duration = int((time.monotonic() - turn_start) * 1000)
-        turn_records.append({
-            "turn_index": turn_idx,
-            "user_input": user_content,
-            "assistant_response": assistant_text,
-            "thinking_trace": None,
-            "tool_calls": [],
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "duration_ms": turn_duration,
-        })
+            turn_duration = int((time.monotonic() - turn_start) * 1000)
+            turn_records.append({
+                "turn_index": turn_idx,
+                "user_input": user_content,
+                "assistant_response": assistant_text,
+                "thinking_trace": thinking_text or None,
+                "tool_calls": tool_calls,
+                "input_tokens": turn_input,
+                "output_tokens": turn_output,
+                "duration_ms": turn_duration,
+            })
 
-        if error:
-            break
+            if error:
+                break
+
+    finally:
+        if tmp_skill_dir:
+            import shutil
+            shutil.rmtree(tmp_skill_dir, ignore_errors=True)
 
     total_duration = int((time.monotonic() - total_start) * 1000)
     return {
@@ -96,5 +98,107 @@ async def run_conversation_cli(
         "total_input_tokens": total_input,
         "total_output_tokens": total_output,
         "total_duration_ms": total_duration,
+        "error": error,
+    }
+
+
+async def _execute_turn(
+    user_message: str,
+    conversation_history: list[str],
+    model: str,
+    skills_dir: str | None = None,
+    timeout: int = 120,
+) -> dict[str, Any]:
+    if conversation_history:
+        context = "\n".join(
+            f"[Previous turn {i+1}]: {msg}" for i, msg in enumerate(conversation_history)
+        )
+        prompt = f"{context}\n\n[Current request]: {user_message}"
+    else:
+        prompt = user_message
+
+    cmd = [
+        "claude", "-p", prompt,
+        "--output-format", "stream-json",
+        "--dangerously-skip-permissions",
+        "--model", model,
+        "--bare",
+    ]
+
+    if skills_dir:
+        cmd.extend(["--add-dir", str(skills_dir)])
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout + 30)
+    except asyncio.TimeoutError:
+        return {"error": f"Turn timed out after {timeout}s", "response": "", "tool_calls": [], "usage": {}}
+    except Exception as e:
+        return {"error": str(e), "response": "", "tool_calls": [], "usage": {}}
+
+    return _parse_stream_json(stdout.decode() if stdout else "")
+
+
+def _parse_stream_json(output: str) -> dict[str, Any]:
+    response_text = ""
+    thinking_text = ""
+    tool_calls: list[dict[str, Any]] = []
+    usage: dict[str, Any] = {}
+    error = None
+
+    for line in output.strip().split("\n"):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        etype = event.get("type", "")
+
+        if etype == "assistant" and "message" in event:
+            msg = event["message"]
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                for block in content:
+                    btype = block.get("type", "")
+                    if btype == "text":
+                        response_text += block.get("text", "")
+                    elif btype == "thinking":
+                        thinking_text += block.get("thinking", "") + "\n"
+                    elif btype == "tool_use":
+                        tool_calls.append({
+                            "tool_name": block.get("name", ""),
+                            "input": block.get("input", {}),
+                            "output": "",
+                            "duration_ms": 0,
+                        })
+
+        elif etype == "tool_result":
+            content = event.get("content", "")
+            if tool_calls:
+                if isinstance(content, list):
+                    parts = [c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text"]
+                    tool_calls[-1]["output"] = "\n".join(parts)[:3000]
+                elif isinstance(content, str):
+                    tool_calls[-1]["output"] = content[:3000]
+
+        elif etype == "result":
+            result_text = event.get("result", "")
+            if result_text:
+                response_text = result_text
+            usage = event.get("usage", {})
+            if event.get("is_error"):
+                error = response_text or "Unknown error"
+
+    return {
+        "response": response_text,
+        "thinking": thinking_text.strip(),
+        "tool_calls": tool_calls,
+        "usage": usage,
         "error": error,
     }

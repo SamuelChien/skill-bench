@@ -27,7 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
 
 CREATE TABLE IF NOT EXISTS jobs (
     id TEXT PRIMARY KEY,
-    type TEXT NOT NULL CHECK(type IN ('benchmark', 'hill_climb')),
+    type TEXT NOT NULL CHECK(type IN ('benchmark', 'hill_climb', 'mine')),
     status TEXT NOT NULL DEFAULT 'pending'
         CHECK(status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
     skill_id TEXT REFERENCES skills(id),
@@ -93,3 +93,21 @@ CREATE TABLE IF NOT EXISTS job_events (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_events_job ON job_events(job_id);
+
+CREATE TABLE IF NOT EXISTS mined_episodes (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    project TEXT NOT NULL,
+    user_intent TEXT NOT NULL,
+    turns_json TEXT NOT NULL DEFAULT '[]',
+    original_response TEXT NOT NULL DEFAULT '',
+    tool_calls_json TEXT NOT NULL DEFAULT '[]',
+    tokens_json TEXT NOT NULL DEFAULT '{}',
+    timestamp TEXT,
+    cwd TEXT,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    promoted_task_id TEXT REFERENCES tasks(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_episodes_session ON mined_episodes(session_id);
+CREATE INDEX IF NOT EXISTS idx_episodes_project ON mined_episodes(project);

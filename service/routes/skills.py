@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -101,3 +104,63 @@ async def list_versions(skill_id: str):
         )
         for r in rows
     ]
+
+
+@router.post("/import-files")
+async def import_skill_files(directory: str | None = None, pattern: str = "*.md", limit: int = 50):
+    skill_dir = Path(os.path.expanduser(directory or "~/.claude/commands"))
+    if not skill_dir.is_dir():
+        raise HTTPException(400, f"Directory not found: {skill_dir}")
+
+    imported = 0
+    for path in sorted(skill_dir.glob(pattern))[:limit]:
+        try:
+            content = path.read_text(errors="replace")
+        except Exception:
+            continue
+
+        name, description = _parse_frontmatter(content)
+        skill_id = name or path.stem
+
+        existing = await db.fetch_one("SELECT id FROM skills WHERE id = ?", (skill_id,))
+        if existing:
+            continue
+
+        await db.insert("skills", {
+            "id": skill_id,
+            "name": name or path.stem,
+            "content": content,
+            "version": 1,
+            "metadata_json": db.to_json({"description": description, "file": path.name}),
+            "file_path": str(path),
+        })
+        imported += 1
+
+    return {"imported": imported, "directory": str(skill_dir)}
+
+
+@router.post("/{skill_id}/export")
+async def export_skill(skill_id: str):
+    row = await db.fetch_one("SELECT * FROM skills WHERE id = ?", (skill_id,))
+    if not row:
+        raise HTTPException(404, f"Skill '{skill_id}' not found")
+    file_path = row.get("file_path")
+    if not file_path:
+        raise HTTPException(400, "Skill has no file_path — cannot export to disk")
+    Path(file_path).write_text(row["content"])
+    return {"exported": file_path}
+
+
+def _parse_frontmatter(content: str) -> tuple[str, str]:
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return "", ""
+    fm = match.group(1)
+    name = ""
+    desc = ""
+    for line in fm.split("\n"):
+        if line.startswith("name:"):
+            name = line.split(":", 1)[1].strip().strip("'\"")
+        elif line.startswith("description:"):
+            desc = line.split(":", 1)[1].strip().strip("'\"")
+    return name, desc
