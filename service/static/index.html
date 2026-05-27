@@ -5,166 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>skill-bench</title>
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="app">
-    <header>
-      <h1><span>skill</span>-bench</h1>
-      <div class="header-status">
-        <div class="status-dot"></div>
-        <span id="api-status">Connecting...</span>
-      </div>
-    </header>
-
-    <div class="tabs">
-      <button class="tab active" data-tab="benchmark" onclick="switchTab('benchmark')">Benchmark</button>
-      <button class="tab" data-tab="hillclimb" onclick="switchTab('hillclimb')">Hill Climb</button>
-    </div>
-
-    <!-- ===== BENCHMARK PANEL ===== -->
-    <div id="panel-benchmark" class="panel active">
-      <div class="split">
-        <!-- Left: Submit form -->
-        <div class="card">
-          <div class="card-header">
-            New Benchmark Job
-            <button class="btn btn-primary" onclick="submitBenchmark()">Run Benchmark</button>
-          </div>
-          <div class="card-body">
-            <div class="form-row" style="margin-bottom:14px">
-              <div class="form-group">
-                <label>Skill</label>
-                <select id="skill-select"><option value="">Loading...</option></select>
-              </div>
-              <div class="form-group">
-                <label>Model</label>
-                <select id="model-select">
-                  <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-                  <option value="claude-sonnet-4-6" selected>Sonnet 4.6</option>
-                  <option value="claude-opus-4-6">Opus 4.6</option>
-                </select>
-              </div>
-              <div class="form-group" style="flex:0;min-width:auto">
-                <label>Thinking</label>
-                <label style="display:flex;align-items:center;gap:6px;font-size:13px;padding:8px 0">
-                  <input type="checkbox" id="thinking-toggle" checked> On
-                </label>
-              </div>
-            </div>
-            <div class="form-group" style="margin-bottom:14px">
-              <label>Tasks <button id="btn-import" class="btn btn-secondary" onclick="importTasks()" style="padding:2px 8px;font-size:11px;margin-left:8px">Import YAML</button></label>
-              <div id="task-checklist" style="max-height:180px;overflow-y:auto;padding:4px 0">Loading...</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Right: Create skill -->
-        <div class="card">
-          <div class="card-header">
-            Create Skill
-            <button class="btn btn-primary" onclick="createSkill()">Save</button>
-          </div>
-          <div class="card-body">
-            <div class="form-group" style="margin-bottom:10px">
-              <label>Skill ID</label>
-              <input type="text" id="new-skill-id" placeholder="e.g. backend_v1">
-            </div>
-            <div class="form-group">
-              <label>System Prompt</label>
-              <textarea id="new-skill-content" rows="6" placeholder="You are a senior software engineer..."></textarea>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Live log -->
-      <div id="job-log" class="log-stream" style="display:none"></div>
-
-      <!-- Jobs table -->
-      <div class="card">
-        <div class="card-header">Jobs</div>
-        <div class="card-body" style="padding:0">
-          <table>
-            <thead><tr><th>ID</th><th>Status</th><th>Model</th><th>Time</th><th></th></tr></thead>
-            <tbody id="jobs-table"><tr><td colspan="5" class="empty-state">Loading...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Results -->
-      <div id="results-panel" class="card" style="display:none">
-        <div class="card-body"></div>
-      </div>
-    </div>
-
-    <!-- ===== HILL CLIMB PANEL ===== -->
-    <div id="panel-hillclimb" class="panel">
-      <div class="split">
-        <!-- Left: Config -->
-        <div class="card">
-          <div class="card-header">
-            Hill Climb Optimizer
-            <button class="btn btn-primary" onclick="submitHillClimb()">Start Optimization</button>
-          </div>
-          <div class="card-body">
-            <div class="form-row" style="margin-bottom:14px">
-              <div class="form-group">
-                <label>Skill to Optimize</label>
-                <select id="hc-skill-select"><option value="">Loading...</option></select>
-              </div>
-              <div class="form-group">
-                <label>Model</label>
-                <select id="hc-model-select">
-                  <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
-                  <option value="claude-sonnet-4-6" selected>Sonnet 4.6</option>
-                </select>
-              </div>
-            </div>
-            <div class="form-row" style="margin-bottom:14px">
-              <div class="form-group">
-                <label>Strategy</label>
-                <select id="hc-strategy">
-                  <option value="greedy">Greedy</option>
-                  <option value="beam">Beam Search (K=3)</option>
-                  <option value="gradient">Gradient-Inspired</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Max Iterations</label>
-                <input type="number" id="hc-iterations" value="5" min="1" max="20">
-              </div>
-            </div>
-            <div class="form-group">
-              <label>Tasks to Optimize Against</label>
-              <div id="hc-task-checklist" style="max-height:140px;overflow-y:auto;padding:4px 0">Loading...</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Right: Jobs list -->
-        <div class="card">
-          <div class="card-header">Optimization Runs</div>
-          <div class="card-body" style="padding:0">
-            <table>
-              <thead><tr><th>ID</th><th>Status</th><th>Model</th><th>Time</th></tr></thead>
-              <tbody id="hc-jobs-table"><tr><td colspan="4" class="empty-state">No runs yet</td></tr></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Live log -->
-      <div id="hc-log" class="log-stream" style="display:none"></div>
-
-      <!-- Iteration results -->
-      <div id="hc-results" class="card" style="display:none">
-        <div class="card-body"></div>
-      </div>
+<div class="shell">
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-brand"><em>skill</em>-bench</div>
+    <div class="topbar-right">
+      <span><span class="dot" id="dot"></span><span id="mode">connecting</span></span>
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-section">Benchmark</div>
+    <button class="sidebar-item active" onclick="nav('jobs')">
+      <span class="icon">&#9654;</span> Jobs <span class="count" id="cnt-jobs">0</span>
+    </button>
+    <button class="sidebar-item" onclick="nav('tests')">
+      <span class="icon">&#9776;</span> Test Cases <span class="count" id="cnt-tests">0</span>
+    </button>
+    <button class="sidebar-item" onclick="nav('actors')">
+      <span class="icon">&#9733;</span> Actors <span class="count" id="cnt-actors">0</span>
+    </button>
+
+    <div class="sidebar-section">Optimize</div>
+    <button class="sidebar-item" onclick="nav('hillclimb')">
+      <span class="icon">&#9650;</span> Hill Climb
+    </button>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-footer">
+      <button class="btn btn-primary" style="width:100%" onclick="nav('new-job')">New Job</button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main" id="main"></div>
+</div>
+<script src="/static/app.js"></script>
 </body>
 </html>
