@@ -3,34 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>skill-bench</title>
+  <title>skill-bench evals</title>
   <link rel="stylesheet" href="/static/style.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 <div class="shell">
   <div class="topbar">
-    <div class="topbar-brand"><em>skill</em>-bench</div>
+    <div class="topbar-brand"><em>skill</em>-bench <span style="font-weight:400;color:var(--text3);font-size:12px;margin-left:6px">evals</span></div>
     <div class="topbar-right">
       <span><span class="dot" id="dot"></span><span id="mode">connecting</span></span>
     </div>
   </div>
 
   <nav class="sidebar">
-    <div class="sidebar-section">Benchmark</div>
-    <button class="sidebar-item active" data-view="jobs" onclick="nav('jobs')">
-      <span class="icon">&#9654;</span> Jobs <span class="count" id="cnt-jobs">0</span>
+    <div class="sidebar-section">Evals</div>
+    <button class="sidebar-item active" data-view="runs" onclick="nav('runs')">
+      <span class="icon">&#9654;</span> Runs <span class="count" id="cnt-runs">0</span>
     </button>
+    <button class="sidebar-item" data-view="new-run" onclick="nav('new-run')">
+      <span class="icon">+</span> New Run
+    </button>
+
+    <div class="sidebar-section">Config</div>
     <button class="sidebar-item" data-view="tests" onclick="nav('tests')">
       <span class="icon">&#9776;</span> Test Cases <span class="count" id="cnt-tests">0</span>
     </button>
     <button class="sidebar-item" data-view="actors" onclick="nav('actors')">
-      <span class="icon">&#9733;</span> Skills <span class="count" id="cnt-actors">0</span>
+      <span class="icon">&#9733;</span> Actors <span class="count" id="cnt-actors">0</span>
     </button>
 
     <div class="sidebar-section">Data</div>
     <button class="sidebar-item" data-view="sessions" onclick="nav('sessions')">
-      <span class="icon">&#8635;</span> Sessions <span class="count" id="cnt-episodes">0</span>
+      <span class="icon">&#8635;</span> Mine Sessions
     </button>
 
     <div class="sidebar-section">Optimize</div>
@@ -39,9 +44,6 @@
     </button>
 
     <div class="sidebar-spacer"></div>
-    <div class="sidebar-footer">
-      <button class="btn btn-primary" style="width:100%" onclick="nav('new-job')">New Job</button>
-    </div>
   </nav>
 
   <div class="main" id="main"></div>
