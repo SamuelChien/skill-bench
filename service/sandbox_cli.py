@@ -128,11 +128,15 @@ async def _execute_turn(
     if skills_dir:
         cmd.extend(["--add-dir", str(skills_dir)])
 
+    clean_env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDECODE")}
+    clean_env["FORCE_COLOR"] = "0"
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=clean_env,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout + 30)
     except asyncio.TimeoutError:

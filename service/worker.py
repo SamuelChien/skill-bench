@@ -111,16 +111,13 @@ async def _worker(worker_id: int) -> None:
             logger.exception("Worker %d unexpected error", worker_id)
 
 
-def _get_sandbox(use_cli: bool = False):
-    if use_cli:
-        from service.sandbox_cli import run_conversation_cli
-        return run_conversation_cli
-    from service.config import settings
-    if settings.get_api_key():
-        from service.sandbox import run_conversation
-        return run_conversation
+def _get_sandbox(use_cli: bool = True):
+    if not use_cli:
+        from service.config import settings
+        if settings.get_api_key():
+            from service.sandbox import run_conversation
+            return run_conversation
     from service.sandbox_cli import run_conversation_cli
-    logger.info("No API key — using Claude CLI sandbox backend")
     return run_conversation_cli
 
 
