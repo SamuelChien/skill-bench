@@ -1,0 +1,33 @@
+id: structured_response
+name: "Follow strict response structure"
+description: "Test if the model follows a required output format: PROBLEM, ROOT CAUSE, FIX sections"
+tags: [format, discipline, debugging]
+timeout_seconds: 120
+model: claude-sonnet-4-6
+
+turns:
+  - role: user
+    content: |
+      This Python code crashes: `int("hello")`. Diagnose it.
+
+      You MUST structure your response with exactly these three sections:
+      ## PROBLEM
+      ## ROOT CAUSE
+      ## FIX
+
+assertions:
+  - type: response_contains
+    target: "response"
+    expected: "## PROBLEM"
+    weight: 3.0
+  - type: response_contains
+    target: "response"
+    expected: "## ROOT CAUSE"
+    weight: 3.0
+  - type: response_contains
+    target: "response"
+    expected: "## FIX"
+    weight: 3.0
+  - type: llm_judge
+    target: "Did the response use exactly the three required section headers (## PROBLEM, ## ROOT CAUSE, ## FIX) in order, with relevant content under each? Deduct for missing sections, wrong headers, or extra sections."
+    weight: 2.0

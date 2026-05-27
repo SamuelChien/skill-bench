@@ -1,0 +1,19 @@
+id: concise_answer
+name: "Ultra-concise technical answer"
+description: "Test if the model gives a brief, direct answer without verbosity"
+tags: [format, discipline, conciseness]
+timeout_seconds: 120
+model: claude-sonnet-4-6
+
+turns:
+  - role: user
+    content: "What is the time complexity of binary search and why?"
+
+assertions:
+  - type: response_contains
+    target: "response"
+    expected: "O(log n)"
+    weight: 3.0
+  - type: llm_judge
+    target: "Was the answer concise (under 3 sentences)? Did it correctly explain O(log n) complexity? A perfect answer is 1-2 sentences. Deduct heavily for verbose explanations, bullet points, or unnecessary examples."
+    weight: 4.0

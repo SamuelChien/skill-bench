@@ -1,0 +1,27 @@
+id: code_only
+name: "Output only code, no explanation"
+description: "Test if the model follows the 'code only' instruction — response should contain ONLY a code block, no prose"
+tags: [format, discipline, code-generation]
+timeout_seconds: 120
+model: claude-sonnet-4-6
+
+turns:
+  - role: user
+    content: "Write a Python function called `fibonacci` that returns the nth Fibonacci number using iteration."
+
+assertions:
+  - type: code_block_contains
+    target: "code"
+    expected: "def fibonacci"
+    weight: 2.0
+  - type: response_not_contains
+    target: "response"
+    expected: "Here"
+    weight: 2.0
+  - type: response_not_contains
+    target: "response"
+    expected: "function"
+    weight: 1.0
+  - type: llm_judge
+    target: "Did the response contain ONLY a code block with no explanatory text before or after? A perfect score means zero prose — just the code."
+    weight: 3.0
