@@ -23,9 +23,8 @@ def get_project_dir(project_path: str | None = None) -> Path:
     if project_path:
         encoded = project_path.replace("/", "-")
         return claude_dir / "projects" / encoded
-    cwd = os.getcwd()
-    encoded = cwd.replace("/", "-")
-    return claude_dir / "projects" / encoded
+    home = os.path.expanduser("~")
+    return claude_dir / "projects" / f"-Users-{os.path.basename(home)}-dev"
 
 
 def scan_sessions(project_path: str | None = None) -> dict[str, Any]:
@@ -159,6 +158,7 @@ def extract_episodes(events: list[dict[str, Any]], session_id: str) -> list[dict
 def _is_meta_message(content: str) -> bool:
     meta_patterns = [
         "<command-name>", "<local-command-caveat>", "<local-command-stdout>",
+        "<system-reminder>",
         "/exit", "/model", "/effort", "/clear", "/help", "/config",
         "/compact", "/cost", "/doctor", "/login", "/logout",
     ]
@@ -166,6 +166,16 @@ def _is_meta_message(content: str) -> bool:
     for p in meta_patterns:
         if content_lower.startswith(p.lower()) or p.lower() in content_lower[:50]:
             return True
+    if content.strip().startswith("[System prompt]:"):
+        return True
+    if content.strip().startswith("[Previous turn"):
+        return True
+    if "you are an evaluation judge" in content_lower[:100]:
+        return True
+    if content.strip().startswith("<task-notification>"):
+        return True
+    if content_lower.strip() in ("interactive", "continue", "yes", "no", "ok", "done", "y", "n"):
+        return True
     return False
 
 

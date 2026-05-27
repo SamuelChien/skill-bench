@@ -6,16 +6,36 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 from service import db
-from service.miner import extract_episodes, mine_project, read_session, scan_sessions
+from service.miner import extract_episodes, get_claude_dir, mine_project, read_session, scan_sessions
 from service.models.mining import EpisodeResponse, MineRequest, PromoteRequest, ScanResult
 
 router = APIRouter(prefix="/api/v1/mining", tags=["mining"])
 
 
-@router.post("/scan", response_model=ScanResult)
-async def scan():
-    result = scan_sessions()
-    return ScanResult(**result)
+@router.get("/projects")
+async def list_projects():
+    claude_dir = get_claude_dir()
+    projects_dir = claude_dir / "projects"
+    if not projects_dir.exists():
+        return []
+    results = []
+    for d in sorted(projects_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        sessions = list(d.glob("*.jsonl"))
+        if sessions:
+            results.append({
+                "name": d.name,
+                "path": str(d),
+                "session_count": len(sessions),
+            })
+    return results
+
+
+@router.post("/scan")
+async def scan(project: str | None = None):
+    result = scan_sessions(project)
+    return result
 
 
 @router.post("/mine")
