@@ -170,15 +170,14 @@ async def _run_judge_api(
 async def _run_judge_cli(
     assertion: dict[str, Any], prompt: str, judge_model: str
 ) -> dict[str, Any]:
-    import os
-    clean_env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDECODE")}
-    clean_env["FORCE_COLOR"] = "0"
+    from service.sandbox_cli import _clean_env
     try:
         proc = await asyncio.create_subprocess_exec(
             "claude", "-p", prompt,
-            "--model", judge_model, "--output-format", "text", "--max-turns", "1",
+            "--model", judge_model, "--output-format", "text",
+            "--max-turns", "1", "--verbose",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            env=clean_env,
+            env=_clean_env(),
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60.0)
         text = stdout.decode().strip()

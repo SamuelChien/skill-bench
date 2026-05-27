@@ -174,8 +174,11 @@ async function viewRunDetail(m, jobId) {
         <div class="flex-between"><span class="meta">SAMPLER</span><span class="mono" style="font-size:12px">${shortModel(job.model)} ${cfg.enable_thinking?'· thinking':'· no-think'}</span></div>
         <div class="flex-between"><span class="meta">JUDGE</span><span class="mono" style="font-size:12px">${shortModel(cfg.judge_model||job.model)}</span></div>
         <div class="flex-between"><span class="meta">CREATED</span><span class="meta">${fmtTime(job.created_at)}</span></div>
-        <div style="margin-top:4px"><button class="btn btn-ghost btn-sm" onclick="cloneRun('${jobId}')">Re-run</button>
-        ${job.status==='running'?`<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="cancelRun('${jobId}')">Cancel</button>`:''}</div>
+        <div style="margin-top:4px">
+          <button class="btn btn-ghost btn-sm" onclick="cloneRun('${jobId}')">Re-run</button>
+          <button class="btn btn-ghost btn-sm" onclick="pickCompare('${jobId}')">Compare</button>
+          ${job.status==='running'?`<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="cancelRun('${jobId}')">Cancel</button>`:''}
+        </div>
       </div></div>
     </div>
     <div class="card"><div class="card-hdr">Results</div><div class="card-body flush">
@@ -193,6 +196,15 @@ async function viewRunDetail(m, jobId) {
 }
 
 async function cloneRun(id) { await api(`/jobs/${id}/clone`,{method:'POST'}); await reload(); nav('runs'); }
+function pickCompare(idA) {
+  const others = _jobs.filter(j=>j.type==='benchmark'&&j.status==='completed'&&j.id!==idA);
+  if (!others.length) return alert('Need another completed run to compare');
+  const idB = prompt('Enter run ID to compare with:\n'+others.map(j=>`${j.id.slice(0,8)} (${j.skill_id||'none'} / ${shortModel(j.model)})`).join('\n'));
+  if (!idB) return;
+  const match = others.find(j=>j.id.startsWith(idB.trim()));
+  if (match) compareRuns(idA, match.id);
+  else alert('Run not found');
+}
 async function cancelRun(id) { await api(`/jobs/${id}`,{method:'DELETE'}); await reload(); nav('runs'); }
 
 // ═══ RESULT DETAIL ═══
@@ -486,6 +498,48 @@ async function viewHCDetail(m, jobId) {
         <pre class="msg-text" style="margin-top:6px;max-height:200px">${esc(it.skill_content)}</pre></details>`;
     html+=`</div>`;}
   html+='</div></div>'; m.innerHTML=html;
+}
+
+// ═══ COMPARE ═══
+async function compareRuns(idA, idB) {
+  const [jobA, jobB, resA, resB] = await Promise.all([
+    api(`/jobs/${idA}`), api(`/jobs/${idB}`),
+    api(`/jobs/${idA}/results`), api(`/jobs/${idB}/results`),
+  ]);
+  const m = el('main');
+  const avgA = jobA.summary?.avg_score ?? 0, avgB = jobB.summary?.avg_score ?? 0;
+
+  const taskIds = [...new Set([...resA.map(r=>r.task_id), ...resB.map(r=>r.task_id)])].sort();
+  const mapA = Object.fromEntries(resA.map(r=>[r.task_id,r]));
+  const mapB = Object.fromEntries(resB.map(r=>[r.task_id,r]));
+
+  let html = `<div class="breadcrumb"><a onclick="nav('runs')">Runs</a> / <span>Compare</span></div>
+    <div class="grid-2 mb-12">
+      <div class="card"><div class="card-body" style="text-align:center">
+        <div class="meta mb-12">RUN A: ${idA.slice(0,8)}</div>
+        <div class="score-big ${scoreClass(avgA)}">${(avgA*100).toFixed(1)}%</div>
+        <div class="meta mt-8">${jobA.skill_id||'none'} · ${shortModel(jobA.model)}</div></div></div>
+      <div class="card"><div class="card-body" style="text-align:center">
+        <div class="meta mb-12">RUN B: ${idB.slice(0,8)}</div>
+        <div class="score-big ${scoreClass(avgB)}">${(avgB*100).toFixed(1)}%</div>
+        <div class="meta mt-8">${jobB.skill_id||'none'} · ${shortModel(jobB.model)}</div></div></div>
+    </div>
+    <div class="card"><div class="card-hdr">Per-Test Comparison</div><div class="card-body flush">
+    <table><thead><tr><th>Test Case</th><th>Run A</th><th>Run B</th><th>Delta</th></tr></thead><tbody>`;
+
+  for (const tid of taskIds) {
+    const a = mapA[tid], b = mapB[tid];
+    const sa = a ? a.overall_score : null, sb = b ? b.overall_score : null;
+    const delta = (sa !== null && sb !== null) ? sb - sa : null;
+    const deltaStr = delta !== null ? `<span style="color:${delta>=0?'var(--green)':'var(--red)'};">${delta>=0?'+':''}${(delta*100).toFixed(1)}%</span>` : '—';
+    html += `<tr>
+      <td><strong>${tid}</strong></td>
+      <td>${sa!==null?`<span class="score-pill ${scoreClass(sa)}">${(sa*100).toFixed(1)}%</span>`:'—'}</td>
+      <td>${sb!==null?`<span class="score-pill ${scoreClass(sb)}">${(sb*100).toFixed(1)}%</span>`:'—'}</td>
+      <td>${deltaStr}</td></tr>`;
+  }
+  html += '</tbody></table></div></div>';
+  m.innerHTML = html;
 }
 
 // ═══ Boot ═══

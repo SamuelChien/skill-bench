@@ -148,6 +148,7 @@ async def _run_benchmark(job: dict) -> None:
 
     total = len(tasks)
     scores = []
+    turn_token_totals = []
 
     for i, task in enumerate(tasks):
         if is_cancelled(job["id"]):
@@ -208,14 +209,25 @@ async def _run_benchmark(job: dict) -> None:
             })
 
         scores.append(task_score["overall_score"])
+        turn_token_totals.append({
+            "input_tokens": conversation.get("total_input_tokens", 0),
+            "output_tokens": conversation.get("total_output_tokens", 0),
+        })
         await emit_event(job["id"], "task_scored", {
             "task_id": task_id, "score": task_score["overall_score"],
+            "input_tokens": conversation.get("total_input_tokens", 0),
+            "output_tokens": conversation.get("total_output_tokens", 0),
         })
 
     avg_score = sum(scores) / len(scores) if scores else 0.0
+    total_in = sum(r.get("input_tokens", 0) for r in turn_token_totals)
+    total_out = sum(r.get("output_tokens", 0) for r in turn_token_totals)
     await db.update("jobs", {
         "progress_json": db.to_json({"completed": total, "total": total}),
-        "summary_json": db.to_json({"avg_score": avg_score, "num_tasks": total}),
+        "summary_json": db.to_json({
+            "avg_score": avg_score, "num_tasks": total,
+            "total_input_tokens": total_in, "total_output_tokens": total_out,
+        }),
     }, "id = ?", (job["id"],))
 
 

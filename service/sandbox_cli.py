@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -14,6 +15,16 @@ from typing import Any
 from service.config import settings
 
 logger = logging.getLogger("skill-bench.sandbox_cli")
+
+
+def _clean_env() -> dict[str, str]:
+    """Strip API key and CLAUDECODE so CLI uses subscription OAuth."""
+    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDECODE")}
+    env["FORCE_COLOR"] = "0"
+    oauth = settings.get_api_key()
+    if oauth and oauth.startswith("oauth-"):
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = oauth
+    return env
 
 
 async def run_conversation_cli(
@@ -89,7 +100,6 @@ async def run_conversation_cli(
 
     finally:
         if tmp_skill_dir:
-            import shutil
             shutil.rmtree(tmp_skill_dir, ignore_errors=True)
 
     total_duration = int((time.monotonic() - total_start) * 1000)
@@ -120,23 +130,20 @@ async def _execute_turn(
     cmd = [
         "claude", "-p", prompt,
         "--output-format", "stream-json",
+        "--verbose",
         "--dangerously-skip-permissions",
         "--model", model,
-        "--bare",
     ]
 
     if skills_dir:
         cmd.extend(["--add-dir", str(skills_dir)])
-
-    clean_env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDECODE")}
-    clean_env["FORCE_COLOR"] = "0"
 
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=clean_env,
+            env=_clean_env(),
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout + 30)
     except asyncio.TimeoutError:
@@ -144,12 +151,17 @@ async def _execute_turn(
     except Exception as e:
         return {"error": str(e), "response": "", "tool_calls": [], "usage": {}}
 
+    if stderr:
+        err_text = stderr.decode().strip()
+        if err_text and "Error:" in err_text:
+            logger.error("CLI stderr: %s", err_text[:300])
+
     return _parse_stream_json(stdout.decode() if stdout else "")
 
 
 def _parse_stream_json(output: str) -> dict[str, Any]:
     response_text = ""
-    thinking_text = ""
+    thinking_parts: list[str] = []
     tool_calls: list[dict[str, Any]] = []
     usage: dict[str, Any] = {}
     error = None
@@ -173,7 +185,7 @@ def _parse_stream_json(output: str) -> dict[str, Any]:
                     if btype == "text":
                         response_text += block.get("text", "")
                     elif btype == "thinking":
-                        thinking_text += block.get("thinking", "") + "\n"
+                        thinking_parts.append(block.get("thinking", ""))
                     elif btype == "tool_use":
                         tool_calls.append({
                             "tool_name": block.get("name", ""),
@@ -193,7 +205,7 @@ def _parse_stream_json(output: str) -> dict[str, Any]:
 
         elif etype == "result":
             result_text = event.get("result", "")
-            if result_text:
+            if result_text and not response_text:
                 response_text = result_text
             usage = event.get("usage", {})
             if event.get("is_error"):
@@ -201,7 +213,7 @@ def _parse_stream_json(output: str) -> dict[str, Any]:
 
     return {
         "response": response_text,
-        "thinking": thinking_text.strip(),
+        "thinking": "\n\n".join(thinking_parts).strip(),
         "tool_calls": tool_calls,
         "usage": usage,
         "error": error,

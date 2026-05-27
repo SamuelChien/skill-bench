@@ -264,17 +264,15 @@ Suggest {k} different improved version{"s" if k > 1 else ""} of the system promp
 Respond in JSON {"array" if k > 1 else ""} format:
 {{"suggestions": [{{"new_content": "the full new system prompt", "summary": "what changed and why"}}]}}"""
 
-    import os
-    clean_env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "CLAUDECODE")}
-    clean_env["FORCE_COLOR"] = "0"
+    from service.sandbox_cli import _clean_env
 
     proc = await asyncio.create_subprocess_exec(
         "claude", "-p", prompt,
         "--model", "claude-sonnet-4-6",
         "--output-format", "text",
-        "--max-turns", "1",
+        "--max-turns", "1", "--verbose",
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        env=clean_env,
+        env=_clean_env(),
     )
     stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120.0)
     text = stdout.decode().strip() if stdout else ""
