@@ -11,6 +11,7 @@ from typing import Any, Callable, Awaitable
 import anthropic
 
 from service.config import settings
+from service import tracing
 
 logger = logging.getLogger("skill-bench.sandbox")
 
@@ -103,6 +104,9 @@ async def run_conversation(
         turn_input_tokens = 0
         turn_output_tokens = 0
 
+        # Start tracing for this turn
+        turn_trace = tracing.start_turn_trace(turn_idx, user_content)
+
         try:
             final_response, accumulated_tokens = await _complete_with_tool_loop(
                 client=client,
@@ -149,6 +153,15 @@ async def run_conversation(
         turn_duration = int((time.monotonic() - turn_start) * 1000)
         thinking_text = "\n\n".join(thinking_parts) if thinking_parts else None
 
+        # Update turn trace with final data
+        if turn_trace:
+            turn_trace.assistant_response = assistant_text
+            turn_trace.thinking_trace = thinking_text
+            turn_trace.tool_calls = tool_calls
+            turn_trace.input_tokens = turn_input_tokens
+            turn_trace.output_tokens = turn_output_tokens
+            tracing.end_turn_trace()
+
         turn_records.append({
             "turn_index": turn_idx,
             "user_input": user_content,
@@ -164,12 +177,17 @@ async def run_conversation(
             break
 
     total_duration = int((time.monotonic() - total_start) * 1000)
+
+    # Get complete trace context
+    trace_context = tracing.get_trace_context()
+
     return {
         "turns": turn_records,
         "total_input_tokens": total_input,
         "total_output_tokens": total_output,
         "total_duration_ms": total_duration,
         "error": error,
+        "trace": trace_context.to_dict() if trace_context else None,
     }
 
 
@@ -201,10 +219,49 @@ async def _complete_with_tool_loop(
     accumulated = {"input": 0, "output": 0}
 
     for _round in range(max_tool_rounds):
-        response = await asyncio.wait_for(
-            client.messages.create(**kwargs),
-            timeout=API_TIMEOUT_SECONDS,
-        )
+        api_call_start = time.monotonic()
+        try:
+            response = await asyncio.wait_for(
+                client.messages.create(**kwargs),
+                timeout=API_TIMEOUT_SECONDS,
+            )
+            api_call_duration = (time.monotonic() - api_call_start) * 1000
+
+            # Record the API call
+            tracing.record_api_call(
+                endpoint="/messages",
+                method="POST",
+                request_body={
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "system_prompt_length": len(system_prompt),
+                    "num_messages": len(messages),
+                    "tools": [t.get("name") for t in tools] if tools else None,
+                    "thinking_enabled": enable_thinking,
+                },
+                response_body={
+                    "stop_reason": response.stop_reason,
+                    "content_blocks": len(response.content),
+                },
+                status_code=200,
+                duration_ms=api_call_duration,
+                tokens_used={
+                    "input": response.usage.input_tokens,
+                    "output": response.usage.output_tokens,
+                },
+            )
+        except Exception as e:
+            api_call_duration = (time.monotonic() - api_call_start) * 1000
+            tracing.record_api_call(
+                endpoint="/messages",
+                method="POST",
+                request_body={"model": model},
+                response_body={},
+                status_code=500,
+                duration_ms=api_call_duration,
+                error=str(e),
+            )
+            raise
 
         has_tool_use = any(
             block.type == "tool_use" for block in response.content

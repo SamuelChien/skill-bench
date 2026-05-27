@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS results (
     overall_score REAL NOT NULL DEFAULT 0.0,
     assertion_results_json TEXT NOT NULL DEFAULT '[]',
     judge_results_json TEXT NOT NULL DEFAULT '[]',
+    trace_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_results_job ON results(job_id);
@@ -69,6 +70,7 @@ CREATE TABLE IF NOT EXISTS turns (
     input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0,
     duration_ms INTEGER NOT NULL DEFAULT 0,
+    trace_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_turns_result ON turns(result_id);

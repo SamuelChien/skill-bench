@@ -7,3 +7,5 @@ bridge/node_modules/
 .env
 *.db
 data/
+skill_bench.db-shm
+skill_bench.db-wal

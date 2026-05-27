@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from service import db
+from service import db, tracing
 from service.config import settings
 from service.events import emit_event
 
@@ -162,6 +162,9 @@ async def _run_benchmark(job: dict) -> None:
         tools = json.loads(task["tools_json"])
         assertions = json.loads(task["assertions_json"])
 
+        # Start trace for this task
+        tracing.start_trace(job_id=job["id"], task_id=task_id)
+
         await db.update("jobs", {
             "progress_json": db.to_json({"completed": i, "total": total, "current_task": task_id})
         }, "id = ?", (job["id"],))
@@ -185,6 +188,10 @@ async def _run_benchmark(job: dict) -> None:
 
         run_id = uuid.uuid4().hex[:12]
         result_id = uuid.uuid4().hex[:16]
+
+        # Get the trace context before inserting result
+        trace_ctx = tracing.get_trace_context()
+
         await db.insert("results", {
             "id": result_id,
             "job_id": job["id"],
@@ -193,9 +200,15 @@ async def _run_benchmark(job: dict) -> None:
             "overall_score": task_score["overall_score"],
             "assertion_results_json": db.to_json(task_score["assertion_results"]),
             "judge_results_json": db.to_json(task_score["judge_results"]),
+            "trace_json": db.to_json(trace_ctx.to_dict()) if trace_ctx else None,
         })
 
         for turn_rec in conversation["turns"]:
+            # Extract trace for this turn if available
+            turn_trace_data = None
+            if trace_ctx and turn_rec["turn_index"] < len(trace_ctx.turns):
+                turn_trace_data = trace_ctx.turns[turn_rec["turn_index"]].to_dict()
+
             await db.insert("turns", {
                 "result_id": result_id,
                 "turn_index": turn_rec["turn_index"],
@@ -206,6 +219,7 @@ async def _run_benchmark(job: dict) -> None:
                 "input_tokens": turn_rec.get("input_tokens", 0),
                 "output_tokens": turn_rec.get("output_tokens", 0),
                 "duration_ms": turn_rec.get("duration_ms", 0),
+                "trace_json": db.to_json(turn_trace_data) if turn_trace_data else None,
             })
 
         scores.append(task_score["overall_score"])

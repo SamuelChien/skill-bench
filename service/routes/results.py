@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from starlette.responses import StreamingResponse
 
 from service import db
+from service import trace_formatter
 from service.models.results import (
     AssertionResultResponse,
     CompareEntry,
@@ -16,6 +17,7 @@ from service.models.results import (
     ToolCallResponse,
     TurnResponse,
 )
+from starlette.responses import HTMLResponse
 
 router = APIRouter(tags=["results"])
 
@@ -191,3 +193,80 @@ async def export_jsonl(job_id: str):
         media_type="application/x-ndjson",
         headers={"Content-Disposition": f"attachment; filename=job_{job_id}.jsonl"},
     )
+
+
+@router.get("/api/v1/results/{result_id}/trace")
+async def get_result_trace(result_id: str):
+    """Get complete trace data for a result."""
+    result = await db.fetch_one("SELECT trace_json FROM results WHERE id = ?", (result_id,))
+    if not result:
+        raise HTTPException(404, "Result not found")
+
+    trace_data = json.loads(result["trace_json"]) if result["trace_json"] else None
+    if not trace_data:
+        raise HTTPException(404, "No trace data available")
+
+    return trace_data
+
+
+@router.get("/api/v1/results/{result_id}/trace/timeline")
+async def get_result_trace_timeline(result_id: str):
+    """Get API calls and steps as a chronological timeline."""
+    result = await db.fetch_one("SELECT trace_json FROM results WHERE id = ?", (result_id,))
+    if not result:
+        raise HTTPException(404, "Result not found")
+
+    trace_data = json.loads(result["trace_json"]) if result["trace_json"] else None
+    if not trace_data:
+        raise HTTPException(404, "No trace data available")
+
+    return {
+        "api_calls": trace_formatter.extract_api_calls_timeline(trace_data),
+        "steps": trace_formatter.extract_steps_timeline(trace_data),
+        "turns": trace_formatter.extract_turn_timelines(trace_data),
+    }
+
+
+@router.get("/api/v1/results/{result_id}/trace/summary")
+async def get_result_trace_summary(result_id: str):
+    """Get a summary of trace metrics."""
+    result = await db.fetch_one("SELECT trace_json FROM results WHERE id = ?", (result_id,))
+    if not result:
+        raise HTTPException(404, "Result not found")
+
+    trace_data = json.loads(result["trace_json"]) if result["trace_json"] else None
+    if not trace_data:
+        raise HTTPException(404, "No trace data available")
+
+    return trace_formatter.get_trace_summary(trace_data)
+
+
+@router.get("/api/v1/results/{result_id}/trace/html", response_class=HTMLResponse)
+async def get_result_trace_html(result_id: str):
+    """Export trace as an HTML report."""
+    result = await db.fetch_one("SELECT trace_json FROM results WHERE id = ?", (result_id,))
+    if not result:
+        raise HTTPException(404, "Result not found")
+
+    trace_data = json.loads(result["trace_json"]) if result["trace_json"] else None
+    if not trace_data:
+        raise HTTPException(404, "No trace data available")
+
+    return trace_formatter.export_trace_html(trace_data)
+
+
+@router.get("/api/v1/results/{result_id}/turns/{turn_index}/trace")
+async def get_turn_trace(result_id: str, turn_index: int):
+    """Get complete trace data for a specific turn."""
+    turn = await db.fetch_one(
+        "SELECT trace_json FROM turns WHERE result_id = ? AND turn_index = ?",
+        (result_id, turn_index),
+    )
+    if not turn:
+        raise HTTPException(404, "Turn not found")
+
+    trace_data = json.loads(turn["trace_json"]) if turn["trace_json"] else None
+    if not trace_data:
+        raise HTTPException(404, "No trace data available for this turn")
+
+    return trace_data
